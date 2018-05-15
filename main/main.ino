@@ -21,6 +21,7 @@ Adafruit_SSD1306 display(-1);
 //const byte ledPin  13;
 #define tonePin 7
 #define interruptPin 19
+#define interruptPinStart 2
 
 #define WS2812_PIN 6
 
@@ -50,6 +51,9 @@ void setup(void)
   pinMode(interruptPin, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(interruptPin), click, FALLING);
 
+  pinMode(interruptPinStart, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(interruptPinStart), clickStart, FALLING);
+
   //
   strip = Adafruit_NeoPixel(16, WS2812_PIN, NEO_GRB + NEO_KHZ800);
   strip.begin();
@@ -67,6 +71,7 @@ void setOled(String text)
 {
   dtext = text;
   udisplay = true;
+  //Serial.println("Set OLED: "+dtext);
 }
 
 void updateOled()
@@ -79,6 +84,8 @@ void updateOled()
     display.setCursor(64 - (dtext.length()*6),32 - 6);
     display.print(dtext);
     display.display();
+
+    //Serial.println("Update OLED: "+dtext);
   }
 }
 
@@ -86,6 +93,7 @@ typedef enum{
   state_idle,
   state_countdown,
   state_game_1,
+  state_round_result
 } state_t;
 
 state_t state = state_idle;
@@ -98,9 +106,18 @@ uint8_t adc;
 void loop(void)                     
 {
   uint8_t z;
+  uint8_t j;
   
   switch(state){
     case state_idle:
+      setOled("PLACE CARD");
+      updateOled();
+      
+      for(j=0; j<16; j++){
+        strip.setPixelColor(j, 0, 0, 0);
+      }
+      strip.show();
+      
       //set difficulty (0-880)
       adc = (analogRead(analogPin) / 110) + 1;
       if(adc > 8) {
@@ -131,7 +148,7 @@ void loop(void)
         cw = !cw;
       }
       
-      uint8_t j;
+      
       for(j=0; j<16; j++){
         strip.setPixelColor(j, 0, 0, 0);
       }
@@ -139,7 +156,6 @@ void loop(void)
       strip.setPixelColor(offset, 255, 0, 0); 
       strip.show();
 
-      
       for(z=adc; z<9;z++){
         _delay_ms(20);
       }
@@ -159,6 +175,18 @@ void loop(void)
       }
       
       break;
+    case state_round_result:
+       if(offset == 0) {
+         setOled("HIT!");
+       } else {
+         setOled("MISS!");
+        
+       }
+       updateOled();
+       
+      _delay_ms(1000);
+      state = state_idle;
+      break;
   }
 
   updateOled();
@@ -169,23 +197,25 @@ void click(void){
   //_delay_ms(150);
 
   switch(state){
-    case state_idle:
-       
-       state = state_countdown;
-       break;
     case state_game_1:
        tone(tonePin, 1000, 200);
-       state = state_idle;
+       state = state_round_result;
 
-       if(offset == 0) {
-         setOled("HIT!");
-       } else {
-         setOled("MISS!");
-        
-       }
+       
        Serial.print("click: ");
        Serial.println(offset);
   
        break;
   }
 }
+
+void clickStart(void){
+  Serial.println("clickStart");
+  switch(state){
+    case state_idle:
+       
+       state = state_countdown;
+       break;
+  }
+}
+
