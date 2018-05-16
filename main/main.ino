@@ -1,106 +1,103 @@
+#include "avr/io.h"
+#include "util/delay.h"
+#include <stdint.h>
+#include "notes.h"
+
 #define SSD1306_128_64
 #undef SSD1306_128_32
 #include <Wire.h>
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_GFX.h>
-#define OLED_ADDR   0x3C
 
 Adafruit_SSD1306 display(-1);
-
 #if (SSD1306_LCDHEIGHT != 64)
-#error("Height incorrect, please fix Adafruit_SSD1306.h!");
+   #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
 #include <Adafruit_NeoPixel.h>
-#include <stdint.h>
 
-#include "avr/io.h"
-#include "util/delay.h"
+#define OLED_ADDR 0x3C
+#define ADC_1 A0
+#define TONE_PIN 7
+#define ISR_1 19
+#define ISR_2 2
+#define ISR_3 3
+#define RING_PIN 6
+#define RING_COUNT 16
+#define BAR_COUNT 8
 
-#define analogPin A0
-//const byte ledPin  13;
-#define tonePin 7
-#define interruptPin 19
-#define interruptPinStart 2
+Adafruit_NeoPixel neopixel;
 
-#define WS2812_PIN 6
-
-//volatile uint8_t count = 0;
-
-void click(void);
-
-//#ifndef abs
-//   #define abs(x) (((x)<0) ? -(x) : (x))
-//#endif
-
-//uint8_t ping_pong(uint8_t min, uint8_t max, uint8_t offset){
-//    uint8_t delta = (max - min);
-//    return min + abs(((offset + delta) % (delta << 1)) - delta);
-//}
-
-
-Adafruit_NeoPixel strip;
-
-String dtext = "";
-bool udisplay = true;
-
-void setup(void)
-{  
-  //    
-  Serial.begin(9600);
-  pinMode(interruptPin, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(interruptPin), click, FALLING);
-
-  pinMode(interruptPinStart, INPUT_PULLUP);
-  attachInterrupt(digitalPinToInterrupt(interruptPinStart), clickStart, FALLING);
-
-  //
-  strip = Adafruit_NeoPixel(16, WS2812_PIN, NEO_GRB + NEO_KHZ800);
-  strip.begin();
-  strip.show();
-
-  // initialize and clear display
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  
-  
-  setOled("WELCOME");
-  
-}
-
-void setOled(String text)
-{
-  dtext = text;
-  udisplay = true;
-  //Serial.println("Set OLED: "+dtext);
-}
-
-void updateOled()
-{
-  if(udisplay) {
-    udisplay = false;
-    display.clearDisplay();
-    display.setTextSize(2);
-    display.setTextColor(WHITE);
-    display.setCursor(64 - (dtext.length()*6),32 - 6);
-    display.print(dtext);
-    display.display();
-
-    //Serial.println("Update OLED: "+dtext);
-  }
-}
+//static void isr(void);
+//void tone_russia(void);
 
 typedef enum{
   state_idle,
   state_countdown,
-  state_game_1,
-  state_round_result
+  state_game_one,
+  state_game_two,
+  state_game_one_result
 } state_t;
 
-state_t state = state_idle;
+state_t game_states[2] = {
+  state_game_one,
+  state_game_two
+};
 
+////////////////////
+void neopixel_black(Adafruit_NeoPixel neopixel, uint8_t count){
+  uint8_t i;
+  for(i=0;i<count;i++){
+    neopixel.setPixelColor(i, 0, 0, 0);
+  }
+  neopixel.show();
+}
+/////////////////////
+volatile state_t state = state_idle;
 volatile int8_t offset;
-uint8_t cw = true;
 
+#define oled_buffer_size 16
+static char oled_buffer[oled_buffer_size];
+
+volatile bool isr_update = false;
+static uint8_t i; 
+/////////////////////
+void setup(void){  
+  Serial.begin(9600);
+  
+  pinMode(ISR_1, INPUT_PULLUP);
+  pinMode(ISR_2, INPUT_PULLUP);
+  attachInterrupt(digitalPinToInterrupt(ISR_1), isr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ISR_2), isr, FALLING);
+  attachInterrupt(digitalPinToInterrupt(ISR_3), isr, FALLING);
+
+  neopixel = Adafruit_NeoPixel(RING_COUNT, RING_PIN, NEO_GRB + NEO_KHZ800);
+  neopixel.begin();
+  neopixel.show();
+
+  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
+}
+
+String dtext = "";
+//bool udisplay = true;
+
+void oled_set(String text){
+  dtext = text;
+  //udisplay = true;
+}
+void oled_render(void){
+  //if(udisplay){
+     //udisplay = false;
+     display.clearDisplay();
+     display.setTextSize(2);
+     display.setTextColor(WHITE);
+     display.setCursor(64 - (dtext.length()*6),32 - 6);
+     display.print(dtext);
+     display.display();
+  //}
+}
+
+uint8_t cw = true;
 uint8_t adc;
 
 void loop(void)                     
@@ -110,112 +107,232 @@ void loop(void)
   
   switch(state){
     case state_idle:
-      setOled("PLACE CARD");
-      updateOled();
-      
+      oled_set("PLACE CARD");
+      oled_render();
+
+      //neopixel_black(neopixel, RING_COUNT);
       for(j=0; j<16; j++){
-        strip.setPixelColor(j, 0, 0, 0);
+        neopixel.setPixelColor(j, 0, 0, 0);
       }
-      strip.show();
+      neopixel.show();
       
       //set difficulty (0-880)
-      adc = (analogRead(analogPin) / 110) + 1;
+      adc = (analogRead(ADC_1) / 110) + 1;
       if(adc > 8) {
         adc = 8;
       }
+      //Serial.print(adc);
+      //Serial.print("---");
+      //Serial.println(map(analogRead(ADC_1), 0, 1023, 0, 8));
 
-      Serial.println(adc);
+      //Serial.println(adc);
       _delay_ms(500);
       
       break;
-    case state_game_1:
+    case state_countdown:
+      if(isr_update){
+        isr_update = false;
+
+        state = game_states[random(1)];
+
+        for(i=3;i>0;i--){
+           snprintf(oled_buffer, oled_buffer_size, "%d !", i);
+           oled_set(oled_buffer);
+           oled_render();
+
+           tone(TONE_PIN, 1000/i, 200*(4-i));
+           
+           _delay_ms(750);
+        }
+
+        oled_set("Go, go, go");
+        oled_render();
+      }
+      break;
+    case state_game_one:
+      if(isr_update){
+        isr_update = false;
+        Serial.println("!!!!!");
+      }
+    
       if(cw){
         offset++;
-      } else {
+      }
+      else {
         offset--;
       }
-      
-      if(offset == 16){
+      if(offset == RING_COUNT){
         offset = 0;
       }
-
       if(offset == -1) {
-        offset = 15;
+        offset = (RING_COUNT - 1);
       }
-
-      if(offset == random(16))
-      {
+      if(offset == random(RING_COUNT)){
         cw = !cw;
       }
       
-      
-      for(j=0; j<16; j++){
-        strip.setPixelColor(j, 0, 0, 0);
+      for(j=0; j<RING_COUNT; j++){
+        neopixel.setPixelColor(j, 0, 0, 0);
       }
-      strip.setPixelColor(0, 0, 255, 0);
-      strip.setPixelColor(offset, 255, 0, 0); 
-      strip.show();
+      neopixel.setPixelColor(0, 0, 255, 0);
+      neopixel.setPixelColor(offset, 255, 0, 0); 
+      neopixel.show();
 
       for(z=adc; z<9;z++){
         _delay_ms(20);
       }
       break;
-    case state_countdown:
-      z = 4;
-      while(z--){
-        if(z == 0){
-          state = state_game_1;
-          setOled("LET'S GO!");
-          break;
-        }
-        _delay_ms(500);
-        tone(tonePin, 1000/z, 200*(4-z));
-        setOled(String(z));
-        updateOled();
-      }
-      
-      break;
-    case state_round_result:
-       if(offset == 0) {
-         setOled("HIT!");
-       } else {
-         setOled("MISS!");
-        
-       }
-       updateOled();
-       
-      _delay_ms(1000);
-      state = state_idle;
-      break;
-  }
+    case state_game_two:
 
-  updateOled();
-}
+      if(isr_update){
+        isr_update = false;
 
-//
-void click(void){
-  //_delay_ms(150);
-
-  switch(state){
-    case state_game_1:
-       tone(tonePin, 1000, 200);
-       state = state_round_result;
-
-       
-       Serial.print("click: ");
-       Serial.println(offset);
+        //beep
+        tone(TONE_PIN, 300 + (offset * 50), 50);
   
-       break;
+        //display
+        snprintf(oled_buffer, oled_buffer_size, "%d !", offset);
+        oled_set(oled_buffer);
+        oled_render();
+  
+        //leds
+        for(i=0; i < RING_COUNT; i++){
+          if(i < offset){
+            neopixel.setPixelColor(i, 0, 0, 255);
+          }
+          else {
+            neopixel.setPixelColor(i, 0, 0, 0);
+          }
+        }
+        neopixel.show();
+  
+        //complete
+        if(offset >= RING_COUNT){
+            offset = 0;
+            //reset
+            for(i=0; i < RING_COUNT; i++){
+              neopixel.setPixelColor(i, 0, 0, 0);
+            }
+            neopixel.show();
+            
+            tone_russia();  
+            state = state_idle;
+            break;
+        }
+      }
+      break;
+    case state_game_one_result:
+    
+       if(offset == 0) {
+         oled_set("HIT!");
+
+         tone_usa();
+       }
+       else {
+         oled_set("MISS!");
+
+         tone_usa();
+       }
+       oled_render();
+       
+       _delay_ms(1000);
+
+       state = state_idle;
+      break; 
   }
 }
 
-void clickStart(void){
-  Serial.println("clickStart");
-  switch(state){
-    case state_idle:
-       
-       state = state_countdown;
-       break;
+static void isr(void){
+  noInterrupts();
+
+  //Main button
+  if(digitalRead(ISR_1)){
+     switch(state){
+       case state_idle:
+          isr_update = true;
+          state = state_countdown;
+          break;
+       default:
+          Serial.println(".....");
+          break;
+     }
+  }
+  //Player one
+  else if(digitalRead(ISR_2)){
+     switch(state){
+        case state_game_one:
+          isr_update = true;
+          
+          tone(TONE_PIN, 1000, 200);
+          state = state_game_one_result;
+    
+          break;
+        case state_game_two: 
+          isr_update = true;
+          offset++;
+          break;
+        default:
+          Serial.print("click: ");
+          Serial.println(state);
+     } 
+  }
+  else if(digitalRead(ISR_3)){
+    Serial.println("_______________");
+  }
+  interrupts();
+}
+
+
+void tone_russia(void){
+  const uint16_t notes[] = {
+    NOTE_G4, NOTE_C5, NOTE_G4, NOTE_A4, NOTE_B4, NOTE_E4, NOTE_E4,
+    NOTE_A4, NOTE_G4, NOTE_F4, NOTE_G4, NOTE_C4, NOTE_C4, NOTE_D4, 
+    NOTE_D4, NOTE_E4, NOTE_F4, NOTE_F4, NOTE_G4, NOTE_A4, NOTE_B4,
+    NOTE_C5, NOTE_D5
+  };
+  const uint8_t durations[] = {
+    16, 8, 16, 32, 8, 16, 16, 
+    8, 16, 32, 8, 16, 16, 8, 
+    16, 32, 8, 16, 32, 8, 16, 
+    16, 8
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
+  }
+}
+void tone_usa(void){
+  const uint16_t notes[] = {
+    NOTE_G4, NOTE_E4, NOTE_C4, NOTE_E4, NOTE_G4, NOTE_C5,
+    NOTE_E5, NOTE_D5, NOTE_C5, NOTE_E4, NOTE_F4, NOTE_G4,
+    NOTE_G4, NOTE_G4, NOTE_E5, NOTE_D5, NOTE_C5, NOTE_B4,
+    NOTE_A4, NOTE_B4, NOTE_C5, NOTE_C5, NOTE_G4, NOTE_E4,
+    NOTE_C4
+  };
+  const uint8_t durations[] = {
+    8,32,8,8,8,4,
+    16,32,8,8,8,4,
+    16,16,8,8,8,4,
+    16,32,8,8,8,8,
+    8
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
   }
 }
 
