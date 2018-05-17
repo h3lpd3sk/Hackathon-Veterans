@@ -18,6 +18,7 @@ Adafruit_SSD1306 display(-1);
 
 #define OLED_ADDR 0x3C
 #define ADC_1 A0
+#define ADC_2 A1
 #define TONE_PIN 7
 #define ISR_1 19
 #define ISR_2 2
@@ -64,9 +65,11 @@ static uint8_t i;
 /////////////////////
 void setup(void){  
   Serial.begin(9600);
+  randomSeed(analogRead(ADC_1 + ADC_2));
   
   pinMode(ISR_1, INPUT_PULLUP);
   pinMode(ISR_2, INPUT_PULLUP);
+  pinMode(ISR_3, INPUT_PULLUP);
   attachInterrupt(digitalPinToInterrupt(ISR_1), isr, FALLING);
   attachInterrupt(digitalPinToInterrupt(ISR_2), isr, FALLING);
   attachInterrupt(digitalPinToInterrupt(ISR_3), isr, FALLING);
@@ -132,8 +135,7 @@ void loop(void)
     case state_countdown:
       if(isr_update){
         isr_update = false;
-
-        state = game_states[random(1)];
+        uint8_t r = random(0,2);
 
         for(i=3;i>0;i--){
            snprintf(oled_buffer, oled_buffer_size, "%d !", i);
@@ -145,43 +147,54 @@ void loop(void)
            _delay_ms(750);
         }
 
-        oled_set("Go, go, go");
+        state = game_states[r];
+        if(state == state_game_one)
+        {
+          oled_set("HIT TARGET");
+        }
+
+        if(state == state_game_two)
+        {
+          oled_set("START TAPPING");
+        }
+        
+        
         oled_render();
+
+        
       }
       break;
     case state_game_one:
-      if(isr_update){
-        isr_update = false;
-        Serial.println("!!!!!");
-      }
+        if(isr_update){
+          isr_update = false;
+          if(cw){
+            offset++;
+          }
+          else {
+            offset--;
+          }
+          if(offset == RING_COUNT){
+            offset = 0;
+          }
+          if(offset == -1) {
+            offset = (RING_COUNT - 1);
+          }
+          if(offset == random(RING_COUNT)){
+            cw = !cw;
+          }
+          
+          for(j=0; j<RING_COUNT; j++){
+            neopixel.setPixelColor(j, 0, 0, 0);
+          }
+          neopixel.setPixelColor(0, 0, 255, 0);
+          neopixel.setPixelColor(offset, 255, 0, 0); 
+          neopixel.show();
     
-      if(cw){
-        offset++;
-      }
-      else {
-        offset--;
-      }
-      if(offset == RING_COUNT){
-        offset = 0;
-      }
-      if(offset == -1) {
-        offset = (RING_COUNT - 1);
-      }
-      if(offset == random(RING_COUNT)){
-        cw = !cw;
-      }
-      
-      for(j=0; j<RING_COUNT; j++){
-        neopixel.setPixelColor(j, 0, 0, 0);
-      }
-      neopixel.setPixelColor(0, 0, 255, 0);
-      neopixel.setPixelColor(offset, 255, 0, 0); 
-      neopixel.show();
-
-      for(z=adc; z<9;z++){
-        _delay_ms(20);
-      }
-      break;
+          for(z=adc; z<9;z++){
+            _delay_ms(20);
+          }
+        }
+    break;
     case state_game_two:
 
       if(isr_update){
