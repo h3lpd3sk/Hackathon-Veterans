@@ -26,8 +26,12 @@ Adafruit_SSD1306 display(-1);
 #define RING_PIN1 6
 #define RING_PIN2 8
 
+#define BAR_PIN1 10
+#define BAR_PIN2 9
+
 #define RING_COUNT 24
 #define BAR_COUNT 8
+#define MAX_LIFE 40
 
 Adafruit_NeoPixel neopixel;
 
@@ -37,17 +41,19 @@ typedef enum{
   state_countdown,
   state_game_one,
   state_game_two,
-  state_game_one_result
+  state_roundover,
+  state_gameover
 } state_t;
 
 typedef struct{
   Adafruit_NeoPixel* ring;
   Adafruit_NeoPixel* bar;
   int8_t offset;
-  int8_t round_score;
+  uint32_t round_score;
   uint8_t diff;
   uint8_t cw;
   uint8_t tick;
+  int8_t life;
   uint8_t isr_update;
 } player_t;
 
@@ -81,6 +87,9 @@ void setup(void){
 static Adafruit_NeoPixel pix0 = Adafruit_NeoPixel(RING_COUNT, RING_PIN1, NEO_GRB + NEO_KHZ800);
 static Adafruit_NeoPixel pix1 = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB + NEO_KHZ800);
 
+static Adafruit_NeoPixel bar0 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN1, NEO_GRB + NEO_KHZ800);
+static Adafruit_NeoPixel bar1 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN2, NEO_GRB + NEO_KHZ800);
+
   //setup players
   player_t* p1 = &players[0];
   p1->diff = 1;
@@ -88,9 +97,14 @@ static Adafruit_NeoPixel pix1 = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB
   p1->tick = 0;
   p1->isr_update = false;
   p1->round_score = -1;
+  p1->life = MAX_LIFE;
   p1->ring = &pix0;
   p1->ring->begin();
   p1->ring->show();
+
+  p1->bar = &bar0;
+  p1->bar->begin();
+  p1->bar->show();
   //players[0] = p1;
 
   player_t* p2 = &players[1];
@@ -99,14 +113,49 @@ static Adafruit_NeoPixel pix1 = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB
   p2->tick = 0;
   p2->isr_update = false;
   p2->round_score = -1;
+  p2->life = MAX_LIFE;
   p2->ring = &pix1;
   p2->ring->begin();
   p2->ring->show();
+
+  p2->bar = &bar1;
+  p2->bar->begin();
+  p2->bar->show();
   //players[1] = p2;
   
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   display.clearDisplay();
   display.display();
+}
+
+void update_lifebar()
+{
+  uint8_t val = map(players[0].life, 0, MAX_LIFE, 0, 8);
+  uint8_t j;
+  for(j=0; j<BAR_COUNT; j++){
+    if(j >= val){
+      players[0].bar->setPixelColor(j, 0, 0, 0);
+    } else {
+      players[0].bar->setPixelColor(j, 255, 0, 0);
+    }
+  }
+   players[0].bar->show();
+  
+  val = map(players[1].life, 0, MAX_LIFE, 0, 8);
+  for(j=0; j<BAR_COUNT; j++){
+    if(j >= val){
+      players[1].bar->setPixelColor(j, 0, 0, 0);
+    } else {
+      players[1].bar->setPixelColor(j, 0, 0, 255);
+    }
+  }
+  players[1].bar->show();
+
+  Serial.print("Life P1: ");
+  Serial.println(players[0].life);
+
+  Serial.print("Life P2: ");
+  Serial.println(players[1].life);
 }
 
 void oled_render(String text){
@@ -123,14 +172,21 @@ Serial.println(text);
 uint32_t game2start = 0;
 uint8_t finished = false;
 
+volatile uint8_t reset_game = true;
+
 void loop(void)                     
 {
   uint8_t z;
   uint8_t j;
   
   switch(state){
+    case state_gameover:
+      oled_render("GAME OVER");
+      reset_game = true;
+      break;
+      
     case state_idle:
-      //oled_render("PLACE CARD");
+      oled_render("PLACE CARD");
 
       for(j=0; j<RING_COUNT; j++){
         players[0].ring->setPixelColor(j, 0, 0, 0);
@@ -146,6 +202,17 @@ void loop(void)
       players[1].round_score = -1;
       players[0].tick = 0;
       players[1].tick = 0;
+
+      players[0].isr_update = false;
+      players[1].isr_update = false;
+
+      if(reset_game)
+      {
+        reset_game = false;
+        players[0].life = MAX_LIFE;
+        players[1].life = MAX_LIFE;
+        update_lifebar();
+      }
       
       _delay_ms(500);
       break;
@@ -161,7 +228,6 @@ void loop(void)
       }
 
       state = game_states[random(0,2)];
-      state = state_game_one;
       
       if(state == state_game_one)
       {
@@ -177,9 +243,48 @@ void loop(void)
       finished = false;
       
       break;
+    case state_roundover:
+      if(players[0].round_score < players[1].round_score)
+      {
+        
+        players[1].life -= players[0].diff + players[1].diff;
+      }
+
+      if(players[1].round_score < players[0].round_score)
+      {
+        
+        players[0].life -= players[0].diff + players[1].diff;
+      }
+
+      if(players[0].round_score == players[1].round_score)
+      {
+        players[1].life -= players[1].diff;
+        players[0].life -= players[0].diff;
+      }
+
+      if(players[1].life <= 0)
+      {
+        players[1].life = 0;
+        update_lifebar();
+        //game over
+        tone_russia();
+        state = state_gameover;
+      } else if(players[0].life <= 0)
+      {
+        players[0].life = 0;
+        update_lifebar();
+        //game over
+        tone_usa();
+        state = state_gameover;
+      } else {
+        update_lifebar();
+        _delay_ms(1000);
+        state = state_idle;
+      }
+      break;
     case state_game_one:
     //update for player 1 and 2
-          finished = false;
+          finished = true;
           for(i=0; i < 2; i++){
             players[i].tick++;
             
@@ -187,16 +292,14 @@ void loop(void)
               finished = false;
             if(players[i].isr_update){
               players[i].isr_update = false;
-              Serial.println("x");
               tone(TONE_PIN, 1000, 200);
-              Serial.println("z");
+              
               if(players[i].offset == 0){
                  oled_render("HIT!");
                }
                else {
                  oled_render("MISS!");
                }
-               Serial.println("y");
 
                if(players[i].offset >= RING_COUNT / 2)
                {
@@ -205,9 +308,10 @@ void loop(void)
                 players[i].round_score = players[i].offset;
                }
 
-              
+               
             } else {
-                  if(players[i].tick >= (10 - players[i].diff)) {
+              finished = false;
+                  if(players[i].tick >= (12 - players[i].diff)) {
                     players[i].tick = 0;
                     if(players[i].cw){
                       players[i].offset++;
@@ -236,20 +340,19 @@ void loop(void)
                    _delay_ms(10);
               }
             } else {
-              finished = true;
               players[i].isr_update = false;
               
             }
           }
 
           if(finished) {
-              _delay_ms(1000);
-               state = state_idle;
+              _delay_ms(500);
+               state = state_roundover;
           }
           
     break;
     case state_game_two:
-        finished = false;
+        finished = true;
         
         for(i=0; i < 2; i++){
           if(players[i].round_score == -1){
@@ -261,16 +364,24 @@ void loop(void)
     
                     uint8_t final = RING_COUNT + players[i].diff;
                     uint8_t fill = map(players[i].offset, 0, final, 0, RING_COUNT);
-    
+                    
                     Serial.println(fill);
                     
                     //beep
-                    tone(TONE_PIN, 300 + (players[i].offset * 50), 50);
+                    if(fill <= RING_COUNT){
+                      tone(TONE_PIN, 300 + (players[i].offset * 50), 50);
+                    }
 
                     //leds
                     for(j=0; j < RING_COUNT; j++){
-                      if(j < fill){
-                        players[i].ring->setPixelColor(j, 0, 0, 255);
+                      if(j <= fill){
+                        if(i == 0){
+                          players[i].ring->setPixelColor(j, 255, 0, 0);
+                        }
+
+                        if(i == 1){
+                          players[i].ring->setPixelColor(j, 0, 0, 255);
+                        }
                       }
                       else {
                         players[i].ring->setPixelColor(j, 0, 0, 0);
@@ -279,12 +390,12 @@ void loop(void)
                     players[i].ring->show();
               
                     //complete
-                    if(players[i].offset >= RING_COUNT){
+                    if(fill >= RING_COUNT){
                         
-                        players[i].round_score = game2start - millis();
+                        players[i].round_score = millis() - game2start;
 
                         //display
-                        snprintf(oled_buffer, oled_buffer_size, "%d!", players[i].round_score);
+                        snprintf(oled_buffer, oled_buffer_size, "%d", players[i].round_score);
                         oled_render(oled_buffer);
                         
                         break;
@@ -292,7 +403,6 @@ void loop(void)
     
             }
           } else {
-              finished = true;
               players[i].isr_update = false;
               
             }
@@ -300,7 +410,7 @@ void loop(void)
 
       if(finished) {
               _delay_ms(1000);
-               state = state_idle;
+               state = state_roundover;
           }
           
       break;
@@ -309,16 +419,16 @@ void loop(void)
 
 void set_difficulty(void) {
   //set difficulty (0-1024)
-  uint8_t adc = (analogRead(ADC_1) / (1024/8)) + 1;
-  if(adc > 8) {
-    adc = 8;
+  uint8_t adc = (analogRead(ADC_1) / (1024/10)) + 1;
+  if(adc > 10) {
+    adc = 10;
   }
 
   players[1].diff = adc;
 
-  adc = (analogRead(ADC_2) / (1024/8)) + 1;
-  if(adc > 8) {
-    adc = 8;
+  adc = (analogRead(ADC_2) / (1024/10)) + 1;
+  if(adc > 10) {
+    adc = 10;
   }
 
   players[0].diff = adc;
@@ -337,6 +447,9 @@ Serial.print(state);
        case state_idle:
           state = state_countdown;
           break;
+       case state_gameover:
+          state = state_idle;
+          break;
        default:
           break;
      }
@@ -348,20 +461,20 @@ Serial.print(state);
 
 static void isr_p1(void){
   noInterrupts();
-//else if(digitalRead(ISR_2) || digitalRead(ISR_3)){
-    players[0].isr_update = true;
+  if(state == state_game_one || state == state_game_two){
+   players[0].isr_update = true;
         Serial.print("click: p1"); 
-  
+  }
   
   interrupts();
 }
 
 static void isr_p2(void){
   noInterrupts();
-//else if(digitalRead(ISR_2) || digitalRead(ISR_3)){
+  if(state == state_game_one || state == state_game_two){
     players[1].isr_update = true;
     Serial.print("click: p2");
-  
+  }
   
   interrupts();
 }
