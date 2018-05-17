@@ -31,8 +31,6 @@ Adafruit_SSD1306 display(-1);
 
 Adafruit_NeoPixel neopixel;
 
-//static void isr(void);
-//void tone_russia(void);
 
 typedef enum{
   state_idle,
@@ -43,8 +41,8 @@ typedef enum{
 } state_t;
 
 typedef struct{
-  Adafruit_NeoPixel ring;
-  Adafruit_NeoPixel bar;
+  Adafruit_NeoPixel* ring;
+  Adafruit_NeoPixel* bar;
   int8_t offset;
   int8_t round_score;
   uint8_t diff;
@@ -53,21 +51,13 @@ typedef struct{
   uint8_t isr_update;
 } player_t;
 
-player_t players[2];
+static player_t players[2];
 
 state_t game_states[2] = {
   state_game_one,
   state_game_two
 };
 
-////////////////////
-void neopixel_black(Adafruit_NeoPixel neopixel, uint8_t count){
-  uint8_t i;
-  for(i=0;i<count;i++){
-    neopixel.setPixelColor(i, 0, 0, 0);
-  }
-  neopixel.show();
-}
 /////////////////////
 volatile state_t state = state_idle; 
 
@@ -88,29 +78,31 @@ void setup(void){
   attachInterrupt(digitalPinToInterrupt(ISR_2), isr_main, FALLING);
   attachInterrupt(digitalPinToInterrupt(ISR_3), isr_p2, FALLING);
 
+static Adafruit_NeoPixel pix0 = Adafruit_NeoPixel(RING_COUNT, RING_PIN1, NEO_GRB + NEO_KHZ800);
+static Adafruit_NeoPixel pix1 = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB + NEO_KHZ800);
 
   //setup players
-  player_t p1 = players[0];
-  p1.diff = 1;
-  p1.cw = true;
-  p1.tick = 0;
-  p1.isr_update = false;
-  p1.round_score = -1;
-  p1.ring = Adafruit_NeoPixel(RING_COUNT, RING_PIN1, NEO_GRB + NEO_KHZ800);
-  p1.ring.begin();
-  p1.ring.show();
-  players[0] = p1;
+  player_t* p1 = &players[0];
+  p1->diff = 1;
+  p1->cw = true;
+  p1->tick = 0;
+  p1->isr_update = false;
+  p1->round_score = -1;
+  p1->ring = &pix0;
+  p1->ring->begin();
+  p1->ring->show();
+  //players[0] = p1;
 
-  player_t p2 = players[1];
-  p2.diff = 1;
-  p2.cw = true;
-  p2.tick = 0;
-  p2.isr_update = false;
-  p2.round_score = -1;
-  p2.ring = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB + NEO_KHZ800);
-  p2.ring.begin();
-  p2.ring.show();
-  players[1] = p2;
+  player_t* p2 = &players[1];
+  p2->diff = 1;
+  p2->cw = true;
+  p2->tick = 0;
+  p2->isr_update = false;
+  p2->round_score = -1;
+  p2->ring = &pix1;
+  p2->ring->begin();
+  p2->ring->show();
+  //players[1] = p2;
   
   display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
   display.clearDisplay();
@@ -141,11 +133,11 @@ void loop(void)
       //oled_render("PLACE CARD");
 
       for(j=0; j<RING_COUNT; j++){
-        players[0].ring.setPixelColor(j, 0, 0, 0);
-        players[1].ring.setPixelColor(j, 0, 0, 0);
+        players[0].ring->setPixelColor(j, 0, 0, 0);
+        players[1].ring->setPixelColor(j, 0, 0, 0);
       }
-      players[0].ring.show();
-      players[1].ring.show();
+      players[0].ring->show();
+      players[1].ring->show();
       set_difficulty();
       //reset player vars
       players[0].offset = 0;
@@ -234,11 +226,11 @@ void loop(void)
                     }
                     
                     for(j=0; j<RING_COUNT; j++){
-                      players[i].ring.setPixelColor(j, 0, 0, 0);
+                      players[i].ring->setPixelColor(j, 0, 0, 0);
                     }
-                    players[i].ring.setPixelColor(0, 0, 255, 0);
-                    players[i].ring.setPixelColor(players[i].offset, 255, 0, 0); 
-                    players[i].ring.show(); 
+                    players[i].ring->setPixelColor(0, 0, 255, 0);
+                    players[i].ring->setPixelColor(players[i].offset, 255, 0, 0); 
+                    players[i].ring->show(); 
             
                   }
                    _delay_ms(10);
@@ -278,13 +270,13 @@ void loop(void)
                     //leds
                     for(j=0; j < RING_COUNT; j++){
                       if(j < fill){
-                        players[i].ring.setPixelColor(j, 0, 0, 255);
+                        players[i].ring->setPixelColor(j, 0, 0, 255);
                       }
                       else {
-                        players[i].ring.setPixelColor(j, 0, 0, 0);
+                        players[i].ring->setPixelColor(j, 0, 0, 0);
                       }
                     }
-                    players[i].ring.show();
+                    players[i].ring->show();
               
                     //complete
                     if(players[i].offset >= RING_COUNT){
