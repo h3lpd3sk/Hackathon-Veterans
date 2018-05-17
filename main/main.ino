@@ -9,14 +9,15 @@
 #include <Adafruit_SSD1306.h>
 #include <Adafruit_GFX.h>
 
-Adafruit_SSD1306 display(-1);
+Adafruit_SSD1306 display1(-1);
 #if (SSD1306_LCDHEIGHT != 64)
    #error("Height incorrect, please fix Adafruit_SSD1306.h!");
 #endif
 
 #include <Adafruit_NeoPixel.h>
 
-#define OLED_ADDR 0x3C
+#define OLED_ADDR1 0x3C
+#define OLED_ADDR2 0x3D
 #define ADC_1 A0
 #define ADC_2 A1
 #define TONE_PIN 7
@@ -32,6 +33,7 @@ Adafruit_SSD1306 display(-1);
 #define RING_COUNT 24
 #define BAR_COUNT 8
 #define MAX_LIFE 40
+#define oled_buffer_size 16
 
 Adafruit_NeoPixel neopixel;
 
@@ -55,6 +57,7 @@ typedef struct{
   uint8_t tick;
   int8_t life;
   uint8_t isr_update;
+  char* oled_buffer;
 } player_t;
 
 static player_t players[2];
@@ -67,8 +70,6 @@ state_t game_states[2] = {
 /////////////////////
 volatile state_t state = state_idle; 
 
-#define oled_buffer_size 16
-static char oled_buffer[oled_buffer_size];
 
 volatile bool isr_update = false;
 static uint8_t i; 
@@ -90,6 +91,9 @@ static Adafruit_NeoPixel pix1 = Adafruit_NeoPixel(RING_COUNT, RING_PIN2, NEO_GRB
 static Adafruit_NeoPixel bar0 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN1, NEO_GRB + NEO_KHZ800);
 static Adafruit_NeoPixel bar1 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN2, NEO_GRB + NEO_KHZ800);
 
+static char buff_a[oled_buffer_size];
+static char buff_b[oled_buffer_size];
+
   //setup players
   player_t* p1 = &players[0];
   p1->diff = 1;
@@ -101,6 +105,7 @@ static Adafruit_NeoPixel bar1 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN2, NEO_GRB +
   p1->ring = &pix0;
   p1->ring->begin();
   p1->ring->show();
+  p1->oled_buffer = &buff_a[0];
 
   p1->bar = &bar0;
   p1->bar->begin();
@@ -117,15 +122,16 @@ static Adafruit_NeoPixel bar1 = Adafruit_NeoPixel(BAR_COUNT, BAR_PIN2, NEO_GRB +
   p2->ring = &pix1;
   p2->ring->begin();
   p2->ring->show();
+  p2->oled_buffer = &buff_b[0];
 
   p2->bar = &bar1;
   p2->bar->begin();
   p2->bar->show();
   //players[1] = p2;
   
-  display.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR);
-  display.clearDisplay();
-  display.display();
+  display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR1);
+  display1.clearDisplay();
+  display1.display();
 }
 
 void update_lifebar()
@@ -158,14 +164,27 @@ void update_lifebar()
   Serial.println(players[1].life);
 }
 
-void oled_render(String text){
-//     display.clearDisplay();
-//     display.setTextSize(2);
-//     display.setTextColor(WHITE);
-//     display.setCursor(64 - (text.length()*6),32 - 6);
-//     display.print(text);
-//     display.display();
-Serial.println(text);
+void oled_render(){
+
+  //
+  display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR1);
+     display1.clearDisplay();
+     display1.setTextSize(2);
+     display1.setTextColor(WHITE);
+     
+     display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[0].oled_buffer)*6),32 - 6);
+     display1.print(players[0].oled_buffer);
+     display1.display();
+
+display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR2);
+
+display1.clearDisplay();
+     display1.setTextSize(2);
+     display1.setTextColor(WHITE);
+     
+     display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[1].oled_buffer)*6),32 - 6);
+     display1.print(players[1].oled_buffer);
+     display1.display();
 }
 
 //lelijk var voor game1
@@ -181,12 +200,19 @@ void loop(void)
   
   switch(state){
     case state_gameover:
-      oled_render("GAME OVER");
+      snprintf(players[0].oled_buffer, oled_buffer_size, "GAME OVER");
+      snprintf(players[1].oled_buffer, oled_buffer_size, "GAME OVER");
+      
+                 
+      oled_render();
       reset_game = true;
       break;
       
     case state_idle:
-      oled_render("PLACE CARD");
+      snprintf(players[0].oled_buffer, oled_buffer_size, "PLACE CARD");
+      snprintf(players[1].oled_buffer, oled_buffer_size, "PLACE CARD");
+
+      oled_render();
 
       for(j=0; j<RING_COUNT; j++){
         players[0].ring->setPixelColor(j, 0, 0, 0);
@@ -219,8 +245,9 @@ void loop(void)
     case state_countdown:
       
       for(i=3;i>0;i--){
-         snprintf(oled_buffer, oled_buffer_size, "%d !", i);
-         oled_render(oled_buffer);
+         snprintf(players[0].oled_buffer, oled_buffer_size, "%d !", i);
+         snprintf(players[1].oled_buffer, oled_buffer_size, "%d !", i);
+         oled_render();
 
          tone(TONE_PIN, 1000/i, 200*(4-i));
          
@@ -231,12 +258,16 @@ void loop(void)
       
       if(state == state_game_one)
       {
-        oled_render("HIT TARGET"); 
+        snprintf(players[0].oled_buffer, oled_buffer_size, "HIT TARGET");
+        snprintf(players[1].oled_buffer, oled_buffer_size, "HIT TARGET");
+        oled_render(); 
       }
 
       if(state == state_game_two)
       {
-        oled_render("TAP FAST!"); 
+        snprintf(players[0].oled_buffer, oled_buffer_size, "TAP FAST!");
+      snprintf(players[1].oled_buffer, oled_buffer_size, "TAP FAST!");
+        oled_render();
         game2start = millis();
       }
 
@@ -295,10 +326,13 @@ void loop(void)
               tone(TONE_PIN, 1000, 200);
               
               if(players[i].offset == 0){
-                 oled_render("HIT!");
+                snprintf(players[i].oled_buffer, oled_buffer_size, "HIT!");
+                oled_render();
+        
                }
                else {
-                 oled_render("MISS!");
+                 snprintf(players[i].oled_buffer, oled_buffer_size, "MISS!");
+                 oled_render();
                }
 
                if(players[i].offset >= RING_COUNT / 2)
@@ -395,8 +429,8 @@ void loop(void)
                         players[i].round_score = millis() - game2start;
 
                         //display
-                        snprintf(oled_buffer, oled_buffer_size, "%d", players[i].round_score);
-                        oled_render(oled_buffer);
+                        snprintf(players[i].oled_buffer, oled_buffer_size, "%d", players[i].round_score);
+                        oled_render();
                         
                         break;
                     }
