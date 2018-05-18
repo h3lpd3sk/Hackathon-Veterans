@@ -254,6 +254,16 @@ void loop(void)
       _delay_ms(500);
       break;
     case state_countdown:
+      state = game_states[random(0,2)];
+      if(state == state_game_one)
+      {
+        tone_game1_start();
+      }
+
+      if(state == state_game_two)
+      {
+        tone_game2_start();
+      }
       
       for(i=3;i>0;i--){
          snprintf(players[0].oled_buffer, oled_buffer_size, "%d !", i);
@@ -265,13 +275,15 @@ void loop(void)
          _delay_ms(750);
       }
 
-      state = game_states[random(0,2)];
+      
       
       if(state == state_game_one)
       {
         snprintf(players[0].oled_buffer, oled_buffer_size, "HIT TARGET");
         snprintf(players[1].oled_buffer, oled_buffer_size, "HIT TARGET");
         oled_render(); 
+        players[0].offset = random(4, RING_COUNT-4);
+        players[1].offset = random(4, RING_COUNT-4);
       }
 
       if(state == state_game_two)
@@ -286,9 +298,10 @@ void loop(void)
       
       break;
     case state_roundover:
+      tone_game_end();
+      
       if(players[0].round_score < players[1].round_score)
       {
-        
         players[1].life -= players[0].diff + players[1].diff;
       }
 
@@ -334,7 +347,8 @@ void loop(void)
               finished = false;
             if(players[i].isr_update){
               players[i].isr_update = false;
-              tone(TONE_PIN, 1000, 200);
+              //tone(TONE_PIN, 1000, 200);
+              tone_button();
               
               if(players[i].offset == 0){
                 snprintf(players[i].oled_buffer, oled_buffer_size, "HIT!");
@@ -569,5 +583,109 @@ void tone_usa(void){
     delay(duration * 2);
     noTone(TONE_PIN);
   }
+}
+
+void tone_game_end(void){
+  const uint16_t notes[] = {
+    NOTE_C3,
+    NOTE_B5,
+    NOTE_C6
+  };
+
+  const uint8_t durations[] = {
+    8,
+    32,
+    8
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
+  }
+
+}
+
+void tone_game1_start(void){
+  const uint16_t notes[] = {
+    NOTE_C5,
+    NOTE_E5,
+    NOTE_F5
+  };
+
+  const uint8_t durations[] = {
+    8,
+    32,
+    32
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
+  }
+
+}
+
+void tone_game2_start(void){
+  const uint16_t notes[] = {
+    NOTE_D6,
+    NOTE_C6,
+    NOTE_D6
+  };
+
+  const uint8_t durations[] = {
+    32,
+    32,
+    32
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
+  }
+
+}
+
+void tone_button(void){
+  const uint16_t notes[] = {
+    NOTE_F4,
+    NOTE_C5,
+    NOTE_G5
+  };
+
+  const uint8_t durations[] = {
+    32,
+    32,
+    32
+  };
+
+  const size_t notes_count = sizeof(notes)/sizeof(uint16_t);
+  uint8_t i;
+  uint16_t duration;
+
+  for(i = 0; i < notes_count; i++) {
+    duration = 1500/durations[i];
+    tone(TONE_PIN, notes[i], duration);
+    delay(duration * 2);
+    noTone(TONE_PIN);
+  }
+
 }
 
