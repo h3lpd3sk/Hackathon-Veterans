@@ -166,25 +166,36 @@ void update_lifebar()
 
 void oled_render(){
 
-  //
-  display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR1);
-     display1.clearDisplay();
-     display1.setTextSize(2);
-     display1.setTextColor(WHITE);
-     
-     display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[0].oled_buffer)*6),32 - 6);
-     display1.print(players[0].oled_buffer);
-     display1.display();
+  //static char* buffer_1;
+  //static char* buffer_2;
+  //if(strcmp(players[0].oled_buffer, buffer_1) != 0){
+  
+    //
+    display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR1);
+    display1.clearDisplay();
+    display1.setTextSize(2);
+    display1.setTextColor(WHITE);
+       
+    display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[0].oled_buffer)*6),32 - 6);
+    display1.print(players[0].oled_buffer);
+    display1.display();
+  
+    //buffer_1 = &players[0].oled_buffer[0];
+  //}
+  //if(strcmp(players[1].oled_buffer, buffer_2) != 0){
 
-display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR2);
+   display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR2);
 
-display1.clearDisplay();
-     display1.setTextSize(2);
-     display1.setTextColor(WHITE);
-     
-     display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[1].oled_buffer)*6),32 - 6);
-     display1.print(players[1].oled_buffer);
-     display1.display();
+   display1.clearDisplay();
+   display1.setTextSize(2);
+   display1.setTextColor(WHITE);
+   
+   display1.setCursor(64 - (snprintf(players[0].oled_buffer, oled_buffer_size, players[1].oled_buffer)*6),32 - 6);
+   display1.print(players[1].oled_buffer);
+   display1.display();
+
+   //buffer_2 = &players[1].oled_buffer[0];
+  //}
 }
 
 //lelijk var voor game1
@@ -289,8 +300,8 @@ void loop(void)
 
       if(players[0].round_score == players[1].round_score)
       {
-        players[1].life -= players[1].diff;
-        players[0].life -= players[0].diff;
+        players[1].life -= players[0].diff;
+        players[0].life -= players[1].diff;
       }
 
       if(players[1].life <= 0)
@@ -468,29 +479,22 @@ void set_difficulty(void) {
   players[0].diff = adc;
   
 }
-
 static void isr_main(void){
   noInterrupts();
 
-Serial.print("click: main"); 
-Serial.print(state); 
 
-  //Main button
-  //if(digitalRead(ISR_1)){
-     switch(state){
-       case state_idle:
-          state = state_countdown;
-          break;
-       case state_gameover:
-          state = state_idle;
-          break;
-       default:
-          break;
-     }
-  //}
-  //Player input
+  Serial.println("bukker");
+  switch(state){
+     case state_idle:
+        state = state_countdown;
+        break;
+     case state_gameover:
+        state = state_idle;
+        break;
+     default:
+        break;
+  }
   interrupts();
-  
 }
 
 static void isr_p1(void){
