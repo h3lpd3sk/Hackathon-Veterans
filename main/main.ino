@@ -164,11 +164,14 @@ void update_lifebar()
   Serial.println(players[1].life);
 }
 
+String oled_buffer_1;
+String oled_buffer_2;
+
 void oled_render(){
 
-  //static char* buffer_1;
-  //static char* buffer_2;
-  //if(strcmp(players[0].oled_buffer, buffer_1) != 0){
+  
+  String b1 = String(players[0].oled_buffer);
+  if(b1 != oled_buffer_1){
   
     //
     display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR1);
@@ -180,9 +183,11 @@ void oled_render(){
     display1.print(players[0].oled_buffer);
     display1.display();
   
-    //buffer_1 = &players[0].oled_buffer[0];
-  //}
-  //if(strcmp(players[1].oled_buffer, buffer_2) != 0){
+    oled_buffer_1 = String(players[0].oled_buffer);
+  }
+
+  b1 = String(players[1].oled_buffer);
+  if(b1 != oled_buffer_2){
 
    display1.begin(SSD1306_SWITCHCAPVCC, OLED_ADDR2);
 
@@ -194,8 +199,8 @@ void oled_render(){
    display1.print(players[1].oled_buffer);
    display1.display();
 
-   //buffer_2 = &players[1].oled_buffer[0];
-  //}
+   oled_buffer_2 = String(players[1].oled_buffer);
+  }
 }
 
 //lelijk var voor game1
@@ -411,11 +416,11 @@ void loop(void)
           
     break;
     case state_game_two:
-        finished = true;
+        finished = false;
         
         for(i=0; i < 2; i++){
           if(players[i].round_score == -1){
-              finished = false;
+              
             
               if(players[i].isr_update){
                     players[i].isr_update = false;
@@ -449,8 +454,8 @@ void loop(void)
                     players[i].ring->show();
               
                     //complete
-                    if(fill >= RING_COUNT){
-                        
+                    if(fill >= RING_COUNT-1){
+                        finished = true;
                         players[i].round_score = millis() - game2start;
 
                         //display
@@ -468,6 +473,11 @@ void loop(void)
       }
 
       if(finished) {
+         for(i=0; i < 2; i++){
+          if(players[i].round_score == -1){
+            players[i].round_score = millis();
+          }
+         }
               _delay_ms(1000);
                state = state_roundover;
           }
